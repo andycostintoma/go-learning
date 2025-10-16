@@ -10,23 +10,28 @@ type sms struct {
 	tags    []string
 }
 
-func tagMessages(messages []sms, tagger func(sms) []string) []sms {
-	for i := range messages {
-		messages[i].tags = tagger(messages[i])
-	}
-	return messages
-}
+// tagger checks a single message and returns the appropriate tags.
+func tagger(m sms) []string {
+	content := strings.ToLower(m.content)
+	tags := []string{}
 
-func tagger(msg sms) []string {
-	var tags []string
-	contentLower := strings.ToLower(msg.content)
-
-	if strings.Contains(contentLower, "urgent") {
+	if strings.Contains(content, "urgent") {
 		tags = append(tags, "Urgent")
 	}
-	if strings.Contains(contentLower, "sale") {
+	if strings.Contains(content, "sale") {
 		tags = append(tags, "Promo")
 	}
 
 	return tags
+}
+
+// tagMessages applies a tagging function to each message.
+func tagMessages(messages []sms, f func(sms) []string) []sms {
+	for i := range messages {
+		messages[i].tags = f(messages[i])
+		if messages[i].tags == nil {
+			messages[i].tags = []string{}
+		}
+	}
+	return messages
 }

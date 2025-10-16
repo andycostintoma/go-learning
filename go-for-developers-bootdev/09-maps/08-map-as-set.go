@@ -6,10 +6,10 @@ import (
 )
 
 func countDistinctWords(messages []string) int {
-	words := make(map[string]bool)
+	words := make(map[string]struct{})
 	for _, message := range messages {
 		for _, word := range strings.Fields(message) {
-			words[strings.ToLower(word)] = true
+			words[strings.ToLower(word)] = struct{}{}
 		}
 	}
 

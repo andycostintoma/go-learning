@@ -3,19 +3,11 @@ package main
 import "fmt"
 
 func main() {
-	height := 5
+	const name = "Saul Goodman"
+	const openRate = 30.52
 
-	// Simple if statement without parentheses around the condition
-	if height > 4 {
-		fmt.Println("You are tall enough!")
-	}
+	msg := fmt.Sprintf("Hi %s, your open rate is %.1f percent\n", name, openRate)
+	// don't edit below this line
 
-	// Using else if and else for additional conditions
-	if height > 6 {
-		fmt.Println("You are super tall!")
-	} else if height > 4 {
-		fmt.Println("You are tall enough!")
-	} else {
-		fmt.Println("You are not tall enough!")
-	}
+	fmt.Print(msg)
 }
