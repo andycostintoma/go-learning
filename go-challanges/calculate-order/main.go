@@ -4,6 +4,8 @@ import (
 	"math"
 )
 
+// --- data models ---
+
 type Item struct {
 	SKU       string
 	UnitPrice float64
@@ -20,6 +22,10 @@ type OrderInput struct {
 	VATRate            float64
 	ProcessingFee      ProcessingFee
 	PlatformFeePercent float64
+
+	// Step 3 additions
+	Currency      string
+	ExchangeRates map[string]float64 // e.g. {"EUR": 4.97, "RON": 1.0}
 }
 
 type OrderSummary struct {
@@ -30,38 +36,107 @@ type OrderSummary struct {
 	PlatformFee     float64
 	SellerPayout    float64
 	PlatformRevenue float64
+
+	// Step 3 additions
+	Currency           string
+	SellerPayoutRON    float64
+	PlatformRevenueRON float64
 }
+
+// --- main logic ---
 
 func CalculateOrderSummary(in OrderInput) OrderSummary {
-
+	// --- compute subtotal with validation ---
 	subtotal := 0.0
 	for _, item := range in.Items {
-		subtotal += item.UnitPrice * float64(item.Qty)
+		if item.Qty > 0 && item.UnitPrice >= 0 {
+			subtotal += item.UnitPrice * float64(item.Qty)
+		}
 	}
 
-	vat := subtotal * in.VATRate
+	if subtotal == 0 {
+		return OrderSummary{}
+	}
 
+	// --- normalize inputs ---
+	vatRate := defaultIf(in.VATRate, 0.19, func(v float64) bool { return v <= 0 })
+	pfPercent := clampMin(in.ProcessingFee.Percent, 0)
+	pfFixed := clampMin(in.ProcessingFee.Fixed, 0)
+	platformFeePercent := clamp(in.PlatformFeePercent, 0, 1)
+
+	// --- main arithmetic (in order currency) ---
+	vat := subtotal * vatRate
 	total := subtotal + vat
-
-	processingFee := total*in.ProcessingFee.Percent + in.ProcessingFee.Fixed
-
-	platformFee := subtotal * in.PlatformFeePercent
-
+	processingFee := total*pfPercent + pfFixed
+	platformFee := subtotal * platformFeePercent
 	sellerPayout := total - processingFee - platformFee - vat
 
-	platformRevenue := platformFee
+	// --- currency rounding ---
+	subtotal = roundCurrency(subtotal, in.Currency)
+	vat = roundCurrency(vat, in.Currency)
+	total = roundCurrency(total, in.Currency)
+	processingFee = roundCurrency(processingFee, in.Currency)
+	platformFee = roundCurrency(platformFee, in.Currency)
+	sellerPayout = roundCurrency(sellerPayout, in.Currency)
 
+	// --- conversion to RON ---
+	rate := 1.0
+	if in.ExchangeRates != nil {
+		if r, ok := in.ExchangeRates[in.Currency]; ok && r > 0 {
+			rate = r
+		}
+	}
+	sellerPayoutRON := round2(roundCurrency(sellerPayout, in.Currency) * rate)
+	platformRevenueRON := round2(roundCurrency(platformFee, in.Currency) * rate)
+
+	// --- return summary ---
 	return OrderSummary{
-		Subtotal:        round2(subtotal),
-		VAT:             round2(vat),
-		TotalCollected:  round2(total),
-		ProcessingFee:   round2(processingFee),
-		PlatformFee:     round2(platformFee),
-		SellerPayout:    round2(sellerPayout),
-		PlatformRevenue: round2(platformRevenue),
+		Currency:           in.Currency,
+		Subtotal:           subtotal,
+		VAT:                vat,
+		TotalCollected:     total,
+		ProcessingFee:      processingFee,
+		PlatformFee:        platformFee,
+		SellerPayout:       sellerPayout,
+		PlatformRevenue:    platformFee,
+		SellerPayoutRON:    round2(sellerPayoutRON),
+		PlatformRevenueRON: round2(platformRevenueRON),
 	}
 }
+
+// --- helpers ---
 
 func round2(v float64) float64 {
 	return math.Round(v*100) / 100
+}
+
+func roundCurrency(v float64, currency string) float64 {
+	if currency == "JPY" {
+		return math.Round(v) // 0 decimals
+	}
+	return round2(v) // 2 decimals
+}
+
+func clamp(v, min, max float64) float64 {
+	if v < min {
+		return min
+	}
+	if v > max {
+		return max
+	}
+	return v
+}
+
+func clampMin(v, min float64) float64 {
+	if v < min {
+		return min
+	}
+	return v
+}
+
+func defaultIf(v, def float64, invalid func(float64) bool) float64 {
+	if invalid(v) {
+		return def
+	}
+	return v
 }
